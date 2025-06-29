@@ -1,0 +1,98 @@
+pipeline {
+    agent any // Use any available Jenkins agent/node for execution
+
+    tools {
+        maven 'maven3'    // Use Maven (version named 'maven3' in Jenkins global tools)
+        jdk 'jdk17'       // Use JDK 17 (as defined in Jenkins global tools)
+    }
+
+    environment {
+        SCANNER_HOME = tool 'sonar_scanner' // Set environment variable for Sonar Scanner path
+    }
+
+    stages {
+
+        stage('Git Checkout') {
+            steps {
+                // Clone the GitHub repository (no polling, no changelog collection)
+                git changelog: false, poll: false, url: 'https://github.com/p-udaykiran/secretsanta-generator.git'
+            }
+        }
+
+        stage('Maven Compile') {
+            steps {
+                // Compile the Java application using Maven
+                sh 'mvn clean compile'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                // Run SonarQube static code analysis
+                sh '''
+                    $SCANNER_HOME/bin/sonar-scanner \
+                        -Dsonar.projectKey=santa \
+                        -Dsonar.projectName=santa \
+                        -Dsonar.host.url=http://10.0.2.15:9000 \
+                        -Dsonar.login=squ_28fe503f0364f916f5dfca0e70149f26ace13da6 \
+                        -Dsonar.java.binaries=.
+                '''
+            }
+        }
+
+        stage('OWASP Dependency Check') {
+            steps {
+                // Perform security vulnerability scanning using OWASP Dependency-Check
+                dependencyCheck additionalArguments: '--scan ./', odcInstallation: 'DP'
+                // Publish the dependency check report to Jenkins
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                // Package the application and create a JAR file
+                sh 'mvn clean install'
+            }
+        }
+
+        stage('Check Docker CLI') {
+            steps {
+                // Verify Docker CLI is available and show its version
+                sh 'which docker'
+                sh 'docker --version'
+            }
+        }
+
+        stage('Docker Image Build and Push') {
+            steps {
+                script {
+                    // Authenticate with DockerHub using configured credentials
+                    withDockerRegistry(credentialsId: '08ebdc40-599e-49c6-a67a-9d7f07bb60fd') {
+                        // Build Docker image tagged as 'santa'
+                        sh 'docker build -t santa .'
+                        // Tag the image for DockerHub
+                        sh 'docker tag santa:latest udaypagidimari/santa:latest'
+                        // Push the image to DockerHub repository
+                        sh 'docker push udaypagidimari/santa:latest'
+                    }
+                }
+            }
+        }
+
+        stage('CD JOB') {
+            steps {
+                script {
+                    // Authenticate with DockerHub again (safe even if image already local)
+                    withDockerRegistry(credentialsId: '08ebdc40-599e-49c6-a67a-9d7f07bb60fd') {
+                        // Remove any existing container named 'sanata' (ignore error if not found)
+                        sh 'docker rm -f sanata || true'
+                        // Run a new container from the image, mapping container's 8080 → host's 9001
+                        sh 'docker run -d --name=sanata -p 9001:8080 udaypagidimari/santa:latest'
+                    }
+                }
+            }
+        }
+    }
+}
+
