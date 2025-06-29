@@ -126,6 +126,8 @@ Jenkins will automatically go through these stages:
 🔍 Step 7: CI/CD
 ---
 ![App Preview](preview-images/Screenshot%20from%202025-06-29%2020-53-18.png)
+![App Preview](preview-images/cicd(java_app).png)
+
 
 
 
